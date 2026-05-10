@@ -1,0 +1,6 @@
+.vscode/
+BOOTX64.EFI
+disk/
+OVMF.fd
+bootloader/src/*.d
+bootloader/src/*.o
