@@ -1,0 +1,4 @@
+.vscode/
+BOOTX64.EFI
+disk/
+OVMF.fd
