@@ -1,5 +1,7 @@
 #include <stdint.h>
 #include <stdbool.h>
+#include <stddef.h> // NULL
+
 
 #if __has_include(<uchar.h>)
   #include <uchar.h>
@@ -49,8 +51,16 @@ typedef UINTN EFI_TPL;
 
 #define EFI_SUCCESS 0ULL
 
+#define TOP_BIT 0x8000000000000000
+#define ENCODE_ERROR(x) (TOP_BIT | (x))
+#define EFI_ERROR(x) ((INTN)((UINTN)(x)) < 0)
+
+#define EFI_NOT_READY             ENCODE_ERROR (6)
+
+
 
 typedef struct EFI_SIMPLE_TEXT_OUTPUT_PROTOCOL EFI_SIMPLE_TEXT_OUTPUT_PROTOCOL;
+
 
 typedef
 EFI_STATUS
@@ -78,12 +88,39 @@ typedef struct EFI_SIMPLE_TEXT_OUTPUT_PROTOCOL {
     void *TestString;
     void *QueryMode;
     void *SetMode;
-    void *setAttribute;
+    void *SetAttribute;
     EFI_TEXT_CLEAR_SCREEN ClearScreen;
     void *SetCursorPosition;
     void *EnableCursor;
     void *Mode;
 } EFI_SIMPLE_TEXT_OUTPUT_PROTOCOL;
+
+typedef struct EFI_SIMPLE_TEXT_INPUT_PROTOCOL EFI_SIMPLE_TEXT_INPUT_PROTOCOL;
+
+typedef 
+EFI_STATUS
+(EFIAPI *EFI_INPUT_RESET) (
+    IN EFI_SIMPLE_TEXT_INPUT_PROTOCOL *This,
+    IN BOOLEAN                        ExtendedVerification
+);
+
+typedef struct {
+    UINT16 ScanCode;
+    CHAR16 UnicodeChar;
+} EFI_INPUT_KEY;
+
+typedef 
+EFI_STATUS
+(EFIAPI *EFI_INPUT_READ_KEY) (
+    IN EFI_SIMPLE_TEXT_INPUT_PROTOCOL *This,
+    OUT EFI_INPUT_KEY                 *Key
+);
+
+typedef struct EFI_SIMPLE_TEXT_INPUT_PROTOCOL {
+    EFI_INPUT_RESET    Reset;
+    EFI_INPUT_READ_KEY ReadKeyStroke;
+    EFI_EVENT          WaitForKey;
+} EFI_SIMPLE_TEXT_INPUT_PROTOCOL;
 
 typedef struct {
     UINT64 Signature;
@@ -93,21 +130,46 @@ typedef struct {
     UINT32 Reserved;
 } EFI_TABLE_HEADER;
 
+typedef
+EFI_STATUS
+(EFIAPI *EFI_WAIT_FOR_EVENT) (
+   IN UINTN             NumberOfEvents,
+   IN EFI_EVENT         *Event,
+   OUT UINTN            *Index
+  );
+
+
+typedef struct {
+	EFI_TABLE_HEADER Hdr;
+
+	void* RaiseTPL;
+	void* RestoreTPL;
+
+	void* AllocatePages;
+	void* FreePages;
+	void* GetMemoryMap;
+	void* AllocatePool;
+	void* FreePool;
+
+	void* CreateEvent;
+	void* SetTimer;
+	EFI_WAIT_FOR_EVENT WaitForEvent;
+
+} EFI_BOOT_SERVICES;
+
 typedef struct {
     EFI_TABLE_HEADER                Hdr;
     CHAR16                          *FirmwareVendor;
     UINT32                          FirmwareRevision;
     EFI_HANDLE                      ConsoleInHandle;
-    //EFI_SIMPLE_TEXT_INPUT_PROTOCOL  *ConIn;
-    void                            *ConIn;
+    EFI_SIMPLE_TEXT_INPUT_PROTOCOL  *ConIn;
     EFI_HANDLE                      ConsoleOutHandle;
     EFI_SIMPLE_TEXT_OUTPUT_PROTOCOL *ConOut;
     EFI_HANDLE                      StandardErrorHandle;
     EFI_SIMPLE_TEXT_OUTPUT_PROTOCOL *StdErr;
     //EFI_RUNTIME_SERVICES            *RuntimeServices;
     void                            *RuntimeServices;
-    //EFI_BOOT_SERVICES               *BootServices;
-    void                            *BootServices;
+    EFI_BOOT_SERVICES               *BootServices;
     UINTN                           NumberOfTableEntries;
     //EFI_CONFIGURATION_TABLE         *ConfigurationTable;
     void                            *ConfigurationTable;
