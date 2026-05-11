@@ -57,70 +57,10 @@ typedef UINTN EFI_TPL;
 
 #define EFI_NOT_READY             ENCODE_ERROR (6)
 
+#include "EFI_SIMPLE_TEXT_OUTPUT_PROTOCOL.h"
 
+#include "EFI_SIMPLE_TEXT_INPUT_PROTOCOL.h"
 
-typedef struct EFI_SIMPLE_TEXT_OUTPUT_PROTOCOL EFI_SIMPLE_TEXT_OUTPUT_PROTOCOL;
-
-
-typedef
-EFI_STATUS
-(EFIAPI *EFI_TEXT_RESET) (
-    IN EFI_SIMPLE_TEXT_OUTPUT_PROTOCOL *This,
-    IN BOOLEAN                         ExtendedVerification
-);
-
-typedef
-EFI_STATUS
-(EFIAPI *EFI_TEXT_STRING) (
-    IN EFI_SIMPLE_TEXT_OUTPUT_PROTOCOL *This,
-    IN CHAR16                          *String
-);
-
-typedef
-EFI_STATUS
-(EFIAPI *EFI_TEXT_CLEAR_SCREEN) (
-    IN EFI_SIMPLE_TEXT_OUTPUT_PROTOCOL *This 
-);
-
-typedef struct EFI_SIMPLE_TEXT_OUTPUT_PROTOCOL {
-    EFI_TEXT_RESET  Reset;
-    EFI_TEXT_STRING OutputString;
-    void *TestString;
-    void *QueryMode;
-    void *SetMode;
-    void *SetAttribute;
-    EFI_TEXT_CLEAR_SCREEN ClearScreen;
-    void *SetCursorPosition;
-    void *EnableCursor;
-    void *Mode;
-} EFI_SIMPLE_TEXT_OUTPUT_PROTOCOL;
-
-typedef struct EFI_SIMPLE_TEXT_INPUT_PROTOCOL EFI_SIMPLE_TEXT_INPUT_PROTOCOL;
-
-typedef 
-EFI_STATUS
-(EFIAPI *EFI_INPUT_RESET) (
-    IN EFI_SIMPLE_TEXT_INPUT_PROTOCOL *This,
-    IN BOOLEAN                        ExtendedVerification
-);
-
-typedef struct {
-    UINT16 ScanCode;
-    CHAR16 UnicodeChar;
-} EFI_INPUT_KEY;
-
-typedef 
-EFI_STATUS
-(EFIAPI *EFI_INPUT_READ_KEY) (
-    IN EFI_SIMPLE_TEXT_INPUT_PROTOCOL *This,
-    OUT EFI_INPUT_KEY                 *Key
-);
-
-typedef struct EFI_SIMPLE_TEXT_INPUT_PROTOCOL {
-    EFI_INPUT_RESET    Reset;
-    EFI_INPUT_READ_KEY ReadKeyStroke;
-    EFI_EVENT          WaitForKey;
-} EFI_SIMPLE_TEXT_INPUT_PROTOCOL;
 
 typedef struct {
     UINT64 Signature;
@@ -130,32 +70,7 @@ typedef struct {
     UINT32 Reserved;
 } EFI_TABLE_HEADER;
 
-typedef
-EFI_STATUS
-(EFIAPI *EFI_WAIT_FOR_EVENT) (
-   IN UINTN             NumberOfEvents,
-   IN EFI_EVENT         *Event,
-   OUT UINTN            *Index
-  );
-
-
-typedef struct {
-	EFI_TABLE_HEADER Hdr;
-
-	void* RaiseTPL;
-	void* RestoreTPL;
-
-	void* AllocatePages;
-	void* FreePages;
-	void* GetMemoryMap;
-	void* AllocatePool;
-	void* FreePool;
-
-	void* CreateEvent;
-	void* SetTimer;
-	EFI_WAIT_FOR_EVENT WaitForEvent;
-
-} EFI_BOOT_SERVICES;
+#include "BS.h"
 
 typedef struct {
     EFI_TABLE_HEADER                Hdr;
@@ -174,6 +89,13 @@ typedef struct {
     //EFI_CONFIGURATION_TABLE         *ConfigurationTable;
     void                            *ConfigurationTable;
 } EFI_SYSTEM_TABLE;
+
+#include "EFI_FILE_PROTOCOL.h"
+
+#include "EFI_SIMPLE_FILE_SYSTEM_PROTOCOL.h"
+
+#include "EFI_LOADED_IMAGE_PROTOCOL.h"
+
 
 typedef
 EFI_STATUS
