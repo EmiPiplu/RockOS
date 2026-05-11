@@ -1,5 +1,6 @@
 #include "../include/efi.h"
 #include "../include/elf.h"
+#include "../include/paging.h"
 #include <stdarg.h>
 
 EFI_SIMPLE_TEXT_INPUT_PROTOCOL *cin = NULL;
@@ -21,6 +22,13 @@ void init_globals(EFI_HANDLE handle, EFI_SYSTEM_TABLE *systable) {
 
 	cin->Reset(cin, false);
 
+}
+
+void* memset(void* ptr, uint8_t value, UINT64 size) {
+    for (UINT64 i = 0; i < size; i++){
+        ((uint8_t*)ptr)[i] = value;
+    }
+    return ptr;  
 }
 
 //Shamelessly stolen print_int, print_hex and printf, Thanks Queso Fuego, may the cout spam finally die.
@@ -572,6 +580,119 @@ void Read_Memory_Map() {
 		printf(u"Type: %d, Phys: %x, Pages: %d\r\n", desc->Type, desc->PhysicalStart, desc->NumberOfPages);
 	}
 
+	printf(u"Exiting Boot Services\r\n");
+	status = bs->ExitBootServices(image_handle, MapKey);
+	if (EFI_ERROR(status)){
+		printf(u"Could not exit Boot Services, Key changed\r\n");
+		status = bs->GetMemoryMap(&MemoryMapSize, MemoryMap, &MapKey, &DescriptorSize, &DescriptorVersion);
+		status = bs->ExitBootServices(image_handle, MapKey);
+		if (EFI_ERROR(status)){
+			printf(u"Could not exit boot services. Giving Up.\r\n");
+			while(1);
+		}
+
+	}
+
+}
+
+void Allocate_Stack() {
+	EFI_STATUS status = bs->AllocatePages(AllocateAnyPages, EfiLoaderData, 4, &stack_bottom);
+		if (EFI_ERROR(status)){
+			cout->OutputString(cout, u"Could not allocate pages \r\n");
+			while(1);
+		}
+	stack_top = stack_bottom + (4096 * 4);
+	printf(u"Stack Bottom: %x\r\nStack Top: %x\r\n", stack_bottom, stack_top);
+}
+
+PageTableEntry build_entry(UINT64 flags, UINT64 addr) {
+    PageTableEntry entry;
+    entry.value = addr | flags;
+    return entry;
+    
+}
+
+uint64_t read_addr(PageTableEntry entry) {
+    return entry.value & 0x000FFFFFFFFFF000;
+}
+
+EFI_PHYSICAL_ADDRESS allocate_page_table(){
+	EFI_PHYSICAL_ADDRESS addr = 0;
+	EFI_STATUS status = bs->AllocatePages(AllocateAnyPages, EfiLoaderData, 1, &addr);
+	if (EFI_ERROR(status)){
+		cout->OutputString(cout, u"Could not allocate pages \r\n");
+		while(1);
+	}
+	memset((void*)addr, 0, 4096);
+	return addr;
+}
+
+void Map_Page(PageTable* pml4, EFI_VIRTUAL_ADDRESS vaddr, EFI_PHYSICAL_ADDRESS paddr, UINT64 flags){
+	UINT64 pml4_index = (vaddr >> 39) & 0x1ff;
+	UINT64 pdpt_index = (vaddr >> 30) & 0x1ff;
+	UINT64 pd_index   = (vaddr >> 21) & 0x1ff;
+	UINT64 pt_index   = (vaddr >> 12) & 0x1ff;
+	
+	UINT64 intermediate_flags = PTE_PRESENT | PTE_WRITABLE;
+
+    EFI_PHYSICAL_ADDRESS pdpt_phys = 0;
+    if (pml4->entry[pml4_index].value & PTE_PRESENT) {
+        pdpt_phys = read_addr(pml4->entry[pml4_index]);
+    } else {
+        pdpt_phys = allocate_page_table();
+        pml4->entry[pml4_index] = build_entry(intermediate_flags, pdpt_phys);
+    }
+    PageTable* pdpt = (PageTable*)pdpt_phys;
+
+	EFI_PHYSICAL_ADDRESS pd_phys = 0;
+	if (pdpt->entry[pdpt_index].value & PTE_PRESENT) {
+        pd_phys = read_addr(pdpt->entry[pdpt_index]);
+    } else {
+        pd_phys = allocate_page_table();
+        pdpt->entry[pdpt_index] = build_entry(intermediate_flags, pd_phys);
+    }
+    PageTable* pd = (PageTable*)pd_phys;
+
+	EFI_PHYSICAL_ADDRESS pt_phys = 0;
+	if (pd->entry[pd_index].value & PTE_PRESENT) {
+        pt_phys = read_addr(pd->entry[pd_index]);
+    } else {
+        pt_phys = allocate_page_table();
+        pd->entry[pd_index] = build_entry(intermediate_flags, pt_phys);
+    }
+    PageTable* pt = (PageTable*)pt_phys;
+
+	pt->entry[pt_index] = build_entry(flags, paddr);
+}
+
+void Map_Range(PageTable* pml4, EFI_VIRTUAL_ADDRESS vstart, EFI_PHYSICAL_ADDRESS pstart, UINTN size, UINT64 flags) {
+	EFI_VIRTUAL_ADDRESS Virtual_Page = align_down(vstart, 4096);
+	EFI_PHYSICAL_ADDRESS Physical_Page = align_down(pstart, 4096);
+
+	UINTN offset = vstart - Virtual_Page;
+	UINTN pages = bytes_to_pages(offset + size);
+
+	for (UINTN i = 0; i < pages; i++) {
+		Map_Page(pml4, Virtual_Page + (i * 4096), Physical_Page + (i * 4096), flags);
+	}
+}
+
+static inline UINT64 read_cr3(void) {
+    UINT64 value;
+    __asm__ volatile ("mov %%cr3, %0" : "=r"(value));
+    return value;
+}
+
+static inline void write_cr3(UINT64 value) {
+    __asm__ volatile ("mov %0, %%cr3" :: "r"(value) : "memory");
+}
+
+static inline void cli(void) {
+    __asm__ volatile ("cli" ::: "memory");
+}
+
+static inline void sti(void) {
+    __asm__ volatile ("sti" ::: "memory");
 }
 
 // Entry Point
@@ -603,15 +724,68 @@ EFI_STATUS efi_main(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable) {
 
 	Load_Kernel(file, hdr);
 	
+	Allocate_Stack();
 
-	status = bs->AllocatePages(AllocateAnyPages, EfiLoaderData, 4, &stack_bottom);
-		if (EFI_ERROR(status)){
-			cout->OutputString(cout, u"Could not allocate pages \r\n");
-			while(1);
+	EFI_PHYSICAL_ADDRESS pml4_phys = 0;
+
+	status = bs->AllocatePages(AllocateAnyPages, EfiLoaderData, 1, &pml4_phys);
+	if (EFI_ERROR(status)){
+		cout->OutputString(cout, u"Could not allocate pages \r\n");
+		while(1);
+	}
+	PageTable *pml4 = (PageTable*)pml4_phys;
+	memset(pml4, 0, 4096);
+	printf(u"PML4: %x\r\n",pml4_phys);
+
+	Map_Range(pml4,0x0,0x0,128 * 1024 * 1024, PTE_PRESENT | PTE_WRITABLE);
+	printf(u"Mapped low 128MB\r\n");
+
+	file->SetPosition(file, hdr.e_phoff);
+
+	Elf64_Phdr phdrs[16];
+	UINTN phdr_size = hdr.e_phnum * hdr.e_phentsize;
+
+	file->Read(file, &phdr_size, &phdrs);
+		if (phdr_size != hdr.e_phnum * hdr.e_phentsize){
+			cout->OutputString(cout, u"Could not Read all phdrs\r\n");
 		}
-	stack_top = stack_bottom + (4096 * 4);
+
+	for (UINTN i = 0; i < hdr.e_phnum; i++) {
+
+		if(phdrs[i].p_type != 1) {
+			continue;
+		}
+
+		Map_Range(pml4, phdrs[i].p_vaddr, phdrs[i].p_paddr, phdrs[i].p_memsz, PTE_PRESENT | PTE_WRITABLE);
+		printf(u"Mapped Kernel Segment\r\n");
+		printf(u"Virt: %x\r\nPhys: %x\r\nPages: %d\r\n",phdrs[i].p_vaddr, phdrs[i].p_paddr,bytes_to_pages(phdrs[i].p_memsz));
+
+	}
+	printf(u"Page Tables Built\r\n");
+
+	printf(u"Switching CR3\r\n");
+
+	UINT64 old_cr3 = read_cr3();
+
+	cli();
+	write_cr3(pml4_phys);
+	write_cr3(old_cr3);
+	sti();
+
+
+
+	printf(u"We survived\r\n");
 
 	Read_Memory_Map();
+
+	cli();
+
+	write_cr3(pml4_phys);
+
+	UINT64 kernel_rsp = stack_top - 8;
+	__asm__ volatile ("mov %0, %%rsp" :: "r"(kernel_rsp) : "memory");
+
+	__asm__ volatile ("jmp *%0" :: "r"(hdr.e_entry));
 
     while (1);
 

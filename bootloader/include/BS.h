@@ -73,6 +73,12 @@ EFI_STATUS
    OUT VOID                         **Interface
    );
 
+typedef
+EFI_STATUS
+(EFIAPI *EFI_EXIT_BOOT_SERVICES) (
+  IN EFI_HANDLE                       ImageHandle,
+  IN UINTN                            MapKey
+  );
 
 typedef struct {
 	EFI_TABLE_HEADER Hdr;
@@ -97,5 +103,16 @@ typedef struct {
 	void* ReinstallProtocolInterface;
 	void* UninstallProtocolInterface;
 	EFI_HANDLE_PROTOCOL HandleProtocol;
+	void* Reserved;
+	void* RegisterProtocolNotify;
+	void* LocateHandle;
+	void* LocateDevicePath;
+	void* InstallConfigurationTable;
+
+	void* LoadImage;
+	void* StartImage;
+	void* Exit;
+	void* UnloadImage;
+	EFI_EXIT_BOOT_SERVICES ExitBootServices;
 
 } EFI_BOOT_SERVICES;

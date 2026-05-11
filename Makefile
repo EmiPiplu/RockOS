@@ -23,35 +23,43 @@ CFLAGS = \
 KERNEL_CC = gcc
 KERNEL_LD = ld
 
+KERNEL_SRC_DIR = kernel/src
+KERNEL_BUILD_DIR = build/kernel
+KERNEL_TARGET = kernel.elf
+
+KERNEL_SOURCES = $(shell find $(KERNEL_SRC_DIR) -name '*.c')
+KERNEL_OBJECTS = $(patsubst $(KERNEL_SRC_DIR)/%.c,$(KERNEL_BUILD_DIR)/%.o,$(KERNEL_SOURCES))
+KERNEL_DEPENDS = $(KERNEL_OBJECTS:.o=.d)
+
 KERNEL_CFLAGS = \
 	-std=c17 \
+	-MMD \
 	-Wall \
 	-Wextra \
+	-Wpedantic \
 	-ffreestanding \
 	-fno-stack-protector \
 	-fno-pic \
 	-fno-pie \
 	-mno-red-zone \
 	-mcmodel=kernel \
-	-O2
+	-nostdlib \
+	-Ikernel/include
 
 KERNEL_LDFLAGS = \
 	-nostdlib \
 	-z max-page-size=0x1000 \
 	-T kernel/linker.ld
 
-KERNEL_SRC = kernel/src/main.c
-KERNEL_OBJ = kernel/src/main.o
-KERNEL_TARGET = kernel.elf
-
 all: $(TARGET) $(KERNEL_TARGET)
 	
 
-$(KERNEL_TARGET): $(KERNEL_OBJ) kernel/linker.ld
-	$(KERNEL_LD) $(KERNEL_LDFLAGS) -o $@ $(KERNEL_OBJ)
+$(KERNEL_TARGET): $(KERNEL_OBJECTS) kernel/linker.ld
+	$(KERNEL_LD) $(KERNEL_LDFLAGS) -o $@ $(KERNEL_OBJECTS)
 	cp $(KERNEL_TARGET) disk/kernel.elf
 
-kernel/src/main.o: kernel/src/main.c
+$(KERNEL_BUILD_DIR)/%.o: $(KERNEL_SRC_DIR)/%.c
+	mkdir -p $(dir $@)
 	$(KERNEL_CC) $(KERNEL_CFLAGS) -c $< -o $@
 
 $(TARGET): $(OBJS)
@@ -61,7 +69,7 @@ $(TARGET): $(OBJS)
 -include $(DEPENDS)
 
 clean:
-	rm -rf $(TARGET) $(KERNEL_TARGET) *.efi bootloader/src/*.o bootloader/src/*.d kernel/src/*.o kernel/src/*.d *.elf
+	rm -rf $(TARGET) $(KERNEL_TARGET) *.efi bootloader/src/*.o bootloader/src/*.d kernel/src/*.o kernel/src/*.d *.elf build/*
 
 run:
 	qemu-system-x86_64 \
