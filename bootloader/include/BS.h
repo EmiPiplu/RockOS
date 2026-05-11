@@ -1,3 +1,62 @@
+typedef UINT64 EFI_PHYSICAL_ADDRESS;
+typedef UINT64 EFI_VIRTUAL_ADDRESS;
+
+typedef enum {
+    AllocateAnyPages,
+    AllocateMaxAddress,
+    AllocateAddress
+} EFI_ALLOCATE_TYPE;
+
+typedef enum {
+    EfiReservedMemoryType,
+    EfiLoaderCode,
+    EfiLoaderData,
+    EfiBootServicesCode,
+    EfiBootServicesData,
+    EfiRuntimeServicesCode,
+    EfiRuntimeServicesData,
+    EfiConventionalMemory
+} EFI_MEMORY_TYPE;
+
+typedef struct {
+   UINT32                     Type;
+   UINT32					  Pad;
+   EFI_PHYSICAL_ADDRESS       PhysicalStart;
+   EFI_VIRTUAL_ADDRESS        VirtualStart;
+   UINT64                     NumberOfPages;
+   UINT64                     Attribute;
+  } EFI_MEMORY_DESCRIPTOR;
+
+
+
+
+typedef
+EFI_STATUS
+(EFIAPI *EFI_ALLOCATE_PAGES) (
+   IN EFI_ALLOCATE_TYPE                   Type,
+   IN EFI_MEMORY_TYPE                     MemoryType,
+   IN UINTN                               Pages,
+   IN OUT EFI_PHYSICAL_ADDRESS            *Memory
+   );
+
+typedef
+EFI_STATUS
+(EFIAPI *EFI_GET_MEMORY_MAP) (
+   IN OUT UINTN                  *MemoryMapSize,
+   OUT EFI_MEMORY_DESCRIPTOR     *MemoryMap,
+   OUT UINTN                     *MapKey,
+   OUT UINTN                     *DescriptorSize,
+   OUT UINT32                    *DescriptorVersion
+  );
+
+typedef
+EFI_STATUS
+(EFIAPI  *EFI_ALLOCATE_POOL) (
+   IN EFI_MEMORY_TYPE            PoolType,
+   IN UINTN                      Size,
+   OUT VOID                      **Buffer
+   );
+
 typedef
 EFI_STATUS
 (EFIAPI *EFI_WAIT_FOR_EVENT) (
@@ -21,10 +80,10 @@ typedef struct {
 	void* RaiseTPL;
 	void* RestoreTPL;
 
-	void* AllocatePages;
+	EFI_ALLOCATE_PAGES AllocatePages;
 	void* FreePages;
-	void* GetMemoryMap;
-	void* AllocatePool;
+	EFI_GET_MEMORY_MAP GetMemoryMap;
+	EFI_ALLOCATE_POOL AllocatePool;
 	void* FreePool;
 
 	void* CreateEvent;

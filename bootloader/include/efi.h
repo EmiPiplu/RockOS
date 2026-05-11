@@ -56,6 +56,7 @@ typedef UINTN EFI_TPL;
 #define EFI_ERROR(x) ((INTN)((UINTN)(x)) < 0)
 
 #define EFI_NOT_READY             ENCODE_ERROR (6)
+#define EFI_BUFFER_TOO_SMALL	ENCODE_ERROR (5)
 
 #include "EFI_SIMPLE_TEXT_OUTPUT_PROTOCOL.h"
 

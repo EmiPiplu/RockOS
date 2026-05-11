@@ -4,3 +4,5 @@ disk/
 OVMF.fd
 bootloader/src/*.d
 bootloader/src/*.o
+kernel.elf
+kernel/src/*.o
