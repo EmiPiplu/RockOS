@@ -2,6 +2,7 @@
 #include "../include/elf.h"
 #include "../include/paging.h"
 #include <stdarg.h>
+#include "../include/bootinfo.h"
 
 EFI_SIMPLE_TEXT_INPUT_PROTOCOL *cin = NULL;
 EFI_SIMPLE_TEXT_OUTPUT_PROTOCOL *cout = NULL;
@@ -11,6 +12,7 @@ EFI_HANDLE image_handle = NULL;
 EFI_PHYSICAL_ADDRESS stack_top;
 EFI_PHYSICAL_ADDRESS stack_bottom;
 
+BootInfo *bootinfo = NULL;
 
 void init_globals(EFI_HANDLE handle, EFI_SYSTEM_TABLE *systable) {
 	cout = systable->ConOut;
@@ -580,11 +582,19 @@ void Read_Memory_Map() {
 		printf(u"Type: %d, Phys: %x, Pages: %d\r\n", desc->Type, desc->PhysicalStart, desc->NumberOfPages);
 	}
 
+	bootinfo->memory_map = (UINT64)MemoryMap;
+	bootinfo->memory_map_descriptor_size = DescriptorSize;
+	bootinfo->memory_map_descriptor_version = DescriptorVersion;
+	bootinfo->memory_map_size = MemoryMapSize;
 	printf(u"Exiting Boot Services\r\n");
 	status = bs->ExitBootServices(image_handle, MapKey);
 	if (EFI_ERROR(status)){
 		printf(u"Could not exit Boot Services, Key changed\r\n");
 		status = bs->GetMemoryMap(&MemoryMapSize, MemoryMap, &MapKey, &DescriptorSize, &DescriptorVersion);
+		bootinfo->memory_map = (UINT64)MemoryMap;
+		bootinfo->memory_map_descriptor_size = DescriptorSize;
+		bootinfo->memory_map_descriptor_version = DescriptorVersion;
+		bootinfo->memory_map_size = MemoryMapSize;
 		status = bs->ExitBootServices(image_handle, MapKey);
 		if (EFI_ERROR(status)){
 			printf(u"Could not exit boot services. Giving Up.\r\n");
@@ -602,6 +612,8 @@ void Allocate_Stack() {
 			while(1);
 		}
 	stack_top = stack_bottom + (4096 * 4);
+	bootinfo->kernel_stack_bottom = stack_bottom;
+	bootinfo->kernel_stack_top = stack_top;
 	printf(u"Stack Bottom: %x\r\nStack Top: %x\r\n", stack_bottom, stack_top);
 }
 
@@ -723,6 +735,9 @@ EFI_STATUS efi_main(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable) {
 
 
 	Load_Kernel(file, hdr);
+
+	bs->AllocatePool(EfiLoaderData, sizeof(BootInfo), (VOID **)&bootinfo);
+	bootinfo->magic = BOOTINFO_MAGIC;
 	
 	Allocate_Stack();
 
@@ -763,19 +778,6 @@ EFI_STATUS efi_main(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable) {
 	}
 	printf(u"Page Tables Built\r\n");
 
-	printf(u"Switching CR3\r\n");
-
-	UINT64 old_cr3 = read_cr3();
-
-	cli();
-	write_cr3(pml4_phys);
-	write_cr3(old_cr3);
-	sti();
-
-
-
-	printf(u"We survived\r\n");
-
 	Read_Memory_Map();
 
 	cli();
@@ -783,9 +785,19 @@ EFI_STATUS efi_main(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable) {
 	write_cr3(pml4_phys);
 
 	UINT64 kernel_rsp = stack_top - 8;
-	__asm__ volatile ("mov %0, %%rsp" :: "r"(kernel_rsp) : "memory");
+	UINT64 bootinfo_addr = (UINT64)bootinfo;
+	UINT64 kernel_entry = hdr.e_entry;
 
-	__asm__ volatile ("jmp *%0" :: "r"(hdr.e_entry));
+	__asm__ volatile (
+		"mov %0, %%rsp\n"
+		"mov %1, %%rdi\n"
+		"jmp *%2\n"
+		:
+		: "r"(kernel_rsp),
+		"r"(bootinfo_addr),
+		"r"(kernel_entry)
+		: "memory", "rdi"
+	);
 
     while (1);
 

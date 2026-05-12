@@ -1,4 +1,5 @@
 #include <Drivers/Serial/serial.h>
+#include <IO/io.h>
 
 void serial_init() {
 	outb(0x3FB, 0x80); // Set DLAB
